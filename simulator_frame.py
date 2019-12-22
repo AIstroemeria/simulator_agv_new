@@ -1,4 +1,3 @@
-# remainning problem : why the demand derives that make the agvs in junc run out?
 import wx
 import wx.lib.agw.shapedbutton as SB
 import os

@@ -36,6 +36,7 @@ class Simulator_frame(wx.Frame):
         self.next_flag = False
         self.next_t_start = None
         self.counting = -1
+        self.accelarate_r = 5
 
         block_scale = 100
         road_scale = 1/12
@@ -105,8 +106,8 @@ class Simulator_frame(wx.Frame):
         self.btn5.Enable(False)
         self.rate_label = wx.StaticText(self.panel, -1, "time rate: ",size = [70,-1])
         self.blank_label = wx.StaticText(self.panel, -1, " ",size = [100,-1])
-        self.rate_sc = wx.SpinCtrl(self.panel, -1, "", min = 1, max = 50, initial = 5, size = [30,-1])
-        self.rate_slider = wx.Slider(self.panel, -1, 5, 1, 50, size=(100, -1),
+        self.rate_sc = wx.SpinCtrl(self.panel, -1, "", min = 1, max = 50, initial = self.accelarate_r, size = [30,-1])
+        self.rate_slider = wx.Slider(self.panel, -1, self.accelarate_r, 1, 50, size=(100, -1),
             style=wx.SL_HORIZONTAL | wx.SL_AUTOTICKS | wx.SL_MIN_MAX_LABELS)
         self.rate_slider.SetTickFreq(5)
 
@@ -303,8 +304,9 @@ class Simulator_frame(wx.Frame):
     # play simulation 
     def playing(self, event):
         print("press btn2")
-        self.accelarate_r = 5
         self.completemission = 0
+        self.pausing_time = 0
+        self.current_running_t = 0
         self.is_start = True
         self.reload = True
         self.t_start= time.time()
@@ -332,10 +334,8 @@ class Simulator_frame(wx.Frame):
         self.btn3.Enable(True)
         self.btn5.Enable(False)
 
-        self.pausing_time = time.time() - self.pausing_t_start
+        self.pausing_time = self.pausing_time + time.time() - self.pausing_t_start
         self.pausing_t_start = None
-        self.t_start= self.t_start + self.pausing_time
-        self.pausing_time = 0
         self.is_start = True
         self.statusbar.SetStatusText("Playing" , 0)
     
@@ -343,10 +343,8 @@ class Simulator_frame(wx.Frame):
     def go_next_rhy(self, event):
         print("press btn5")
 
-        self.pausing_time = time.time() - self.pausing_t_start
+        self.pausing_time = self.pausing_time + time.time() - self.pausing_t_start
         self.pausing_t_start = None
-        self.t_start= self.t_start + self.pausing_time
-        self.pausing_time = 0
         self.is_start = True
         self.next_flag = True
         self.statusbar.SetStatusText("Next rhythm" , 0)
@@ -371,6 +369,8 @@ class Simulator_frame(wx.Frame):
         global points
         global nums
         # points = [[28,33,10,self.locations[28],35]]
+        
+        temp_rate = self.accelarate_r
 
         while True:
             if self.is_start:
@@ -381,7 +381,14 @@ class Simulator_frame(wx.Frame):
                     points = []
                     nums = []
                     self.reload = False
-                current_running_t = self.accelarate_r*(time.time() - self.t_start) # scaling simulation time
+                if 'pre_time' not in dir():
+                    pre_time = self.t_start
+                new_time = time.time() 
+                new_period = temp_rate*(new_time - pre_time - self.pausing_time) # scaling simulation time
+                self.current_running_t = self.current_running_t + new_period # scaling simulation time
+                pre_time = new_time
+                current_running_t = self.current_running_t
+                temp_rate = self.accelarate_r
 
                 self.statusbar.SetStatusText("Operating time: %d sec %d min %d hour" %(np.mod(current_running_t,60),np.floor(np.mod(current_running_t,3600)/60),
                     np.floor(current_running_t/3600)) , 1)

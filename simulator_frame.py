@@ -101,9 +101,9 @@ class Simulator_frame(wx.Frame):
         self.btn3 = wx.Button(self.panel, -1, label = 'pause')
         self.btn4 = wx.Button(self.panel, -1, label = 'resume')       
         self.btn5 = wx.Button(self.panel, -1, label = 'next rhythm')
-        self.btn3.Enable(False)
-        self.btn4.Enable(False)
-        self.btn5.Enable(False)
+        self.btn3.Enabled = False
+        self.btn4.Enabled = False
+        self.btn5.Enabled = False
         self.rate_label = wx.StaticText(self.panel, -1, "time rate: ",size = [70,-1])
         self.blank_label = wx.StaticText(self.panel, -1, " ",size = [100,-1])
         self.rate_sc = wx.SpinCtrl(self.panel, -1, "", min = 1, max = 50, initial = self.accelarate_r, size = [30,-1])
@@ -296,48 +296,50 @@ class Simulator_frame(wx.Frame):
         self.dis_matrix = data['dis']
 
         self.btn2.Enabled = True
-        self.btn3.Show(True)
-        self.btn4.Show(True)
         wx.MessageBox('Done!')
         self.statusbar.SetStatusText("Loading success" , 0)
         
     # play simulation 
     def playing(self, event):
         print("press btn2")
+
         self.completemission = 0
         self.pausing_time = 0
         self.current_running_t = 0
         self.is_start = True
         self.reload = True
         self.t_start= time.time()
-        self.btn3.Enable(True)
-        self.btn4.Enable(False)
-        self.btn5.Enable(False)
+
+        self.btn3.Enabled = True
+        self.btn4.Enabled = False
+        self.btn5.Enabled = False
         self.statusbar.SetStatusText("Playing" , 0)
         self.statusbar.SetStatusText("Complete mission: %d" % self.completemission, 2)
     
     # pause and resume
     def pausing(self, event):
         print("press btn3")
-        self.btn3.Enable(False)
-        self.btn4.Enable(True)
-        self.btn5.Enable(True)
 
         self.pausing_t_start = time.time()
         self.is_start = False
         self.statusbar.SetStatusText("Pausing" , 0)
 
-    
+        self.btn3.Enabled = False
+        self.btn4.Enabled = True
+        self.btn5.Enabled = True
+
+    # resume
     def resuming(self, event):
         print("press btn4")
-        self.btn4.Enable(False)
-        self.btn3.Enable(True)
-        self.btn5.Enable(False)
 
         self.pausing_time = self.pausing_time + time.time() - self.pausing_t_start
         self.pausing_t_start = None
         self.is_start = True
         self.statusbar.SetStatusText("Playing" , 0)
+
+        self.btn4.Enabled = False
+        self.btn3.Enabled = True
+        self.btn5.Enabled = False
     
     # go to next rhythm, able when paused
     def go_next_rhy(self, event):

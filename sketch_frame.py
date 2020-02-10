@@ -221,7 +221,7 @@ class SketchFrame(wx.Frame):
 
     def OnNew(self, event): pass
     def OnOpen(self, event): #3 弹出打开对话框
-        dlg = wx.FileDialog(self, "Open sketch file...",os.getcwd(), style=wx.OPEN,
+        dlg = wx.FileDialog(self, "Open sketch file...",os.getcwd(), style=wx.FD_OPEN,
             wildcard=self.wildcard)
         if dlg.ShowModal() == wx.ID_OK:
             self.filename = dlg.GetPath()

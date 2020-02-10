@@ -7,15 +7,76 @@ import json
 import sys, os, time
 import threading
 import random
+import matplotlib.pyplot as plt
 from junction_model import junction_btn
 from entrance_model import entrance_btn
 from main_window import the_map_window
+from layout_Dialog import InputDialog
+from generating_Dialog import generate_Dialog
 
-points = []
-nums = []
+class MDIFrame(wx.MDIParentFrame):
+    def __init__(self):
+        wx.MDIParentFrame.__init__(self, None, -1, "Simulation_v0.1", size = (800,800))
+        self.filepath = ""
+        self.filename = ""
+        menu = wx.Menu()
+        menu.Append(5000, "&New Window")
+        menu.Append(5001, "&Exit")
+        menubar = wx.MenuBar()
+        menubar.Append(menu, "&File")
 
-class Simulator_frame(wx.Frame):
+        self.SetMenuBar(menubar)
+        self.Bind(wx.EVT_MENU, self.OnNewWindow, id = 5000)
+        self.Bind(wx.EVT_MENU, self.OnExit, id = 5001)
+
+    def OnExit(self, evt):
+        self.Close(True)  
+
+    def OnNewWindow(self, evt):
+        '''
+        wildcard = "Json files(*.json)|*.json"
+        dlg = wx.FileDialog(None,"select",os.getcwd(),"",wildcard=wildcard,style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST) 
+        result = dlg.ShowModal()
+        if result == wx.ID_OK:
+            self.filename = dlg.GetFilename()
+            self.filepath = dlg.GetPath()
+
+            with open(self.filepath,'r',encoding='utf-8') as json_file: 
+                data=json.load(json_file)
+            m = data['m']
+            n = data['n']
+            win = Simulator_frame(self, m, n, id=-1, title = self.filename, layout_filepath = self.filepath)
+            win.Show(True)
+        
+        dlg.Destroy()
+        '''
+        dlg = InputDialog(self.loading_layout)
+        dlg.Show()
+    
+    def loading_layout(self,status,thefile):
+        if status == 0:
+            wildcard = "Json files(*.json)|*.json"
+            dlg = wx.FileDialog(None,"select",os.getcwd(),"",wildcard=wildcard,style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST) 
+            result = dlg.ShowModal()
+            if result == wx.ID_OK:
+                self.filename = dlg.GetFilename()
+                self.filepath = dlg.GetPath()
+            dlg.Destroy()
+        else:
+            self.filename = thefile
+            self.filepath = "./" + thefile
+
+        with open(self.filepath,'r',encoding='utf-8') as json_file: 
+            data=json.load(json_file)
+        m = data['m']
+        n = data['n']
+        win = Simulator_frame(self, m, n, id=-1, title = self.filename, layout_filepath = self.filepath)
+        win.Show(True)
+        
+
+class Simulator_frame(wx.MDIChildFrame):
     def __init__(self, parent, m=6, n=6, id=wx.ID_ANY, title="",
+                layout_filepath = "",
                 pos=wx.DefaultPosition, size=wx.DefaultSize,
                 style=wx.DEFAULT_FRAME_STYLE,                 
                 name="Simulator_frame"):  
@@ -23,7 +84,12 @@ class Simulator_frame(wx.Frame):
         super(Simulator_frame, self).__init__(parent, id, title,
                                      pos, size, style, name)
 
-        # Attributes
+        # Attributes        
+        with open(layout_filepath,'r',encoding='utf-8') as json_file: 
+            data=json.load(json_file)
+        self.pre_matrix = data['pre']
+        self.dis_matrix = data['dis']
+
         self.m = m #num of horizontal lines
         self.n = n #num of vertival lines
         self.noj = 2*m*n - m - n
@@ -31,7 +97,6 @@ class Simulator_frame(wx.Frame):
         
         self.is_start = False
         self.t_start = None
-        self.pausing_t_start = None
         self.pausing_time = 0
         self.next_flag = False
         self.next_t_start = None
@@ -41,8 +106,8 @@ class Simulator_frame(wx.Frame):
         block_scale = 100
         road_scale = 1/12
         self.size = ((n+2)*block_scale,(m+2)*block_scale)
-        self.blocksize = (self.size[0]/(n+2),self.size[1]/(m+2))
-        self.roadwidth = self.blocksize[0]*road_scale
+        self.blocksize = (block_scale, block_scale)
+        self.roadwidth =  block_scale*road_scale
 
         self.juncs = []
         #[x,y]
@@ -53,6 +118,7 @@ class Simulator_frame(wx.Frame):
             for j in range(m-1):
                 self.juncs.append([i, j+0.5])
         self.locations = self.get_locations(self.m,self.n,self.noj)
+        
 
         # junction2block
         self.junc2block = {}
@@ -99,11 +165,14 @@ class Simulator_frame(wx.Frame):
         self.btn2 = wx.Button(self.panel, -1, label = 'play')
         self.btn2.Enabled = False
         self.btn3 = wx.Button(self.panel, -1, label = 'pause')
-        self.btn4 = wx.Button(self.panel, -1, label = 'resume')       
-        self.btn5 = wx.Button(self.panel, -1, label = 'next rhythm')
         self.btn3.Enabled = False
-        self.btn4.Enabled = False
+        self.btn4 = wx.Button(self.panel, -1, label = 'resume')
+        self.btn4.Enabled = False       
+        self.btn5 = wx.Button(self.panel, -1, label = 'next rhythm')
         self.btn5.Enabled = False
+        self.btn6 = wx.Button(self.panel, -1, label = 'generate')
+        self.btn6.Enabled = True
+
         self.rate_label = wx.StaticText(self.panel, -1, "time rate: ",size = [70,-1])
         self.blank_label = wx.StaticText(self.panel, -1, " ",size = [100,-1])
         self.rate_sc = wx.SpinCtrl(self.panel, -1, "", min = 1, max = 50, initial = self.accelarate_r, size = [30,-1])
@@ -115,31 +184,35 @@ class Simulator_frame(wx.Frame):
         self.gauge.SetBezelFace(3)
         self.gauge.SetShadowWidth(3)
 
-        # block buttons
+        # junction buttons
         img1 = wx.Image(name="mate\junc.png", type = wx.BITMAP_TYPE_PNG)
         self.junction_blocks = []
+        self.junction_block_info = []
         change1 = 1-3*road_scale
         change2 = 0.5 + (1-change1)/2
         img2 = img1.Scale(change1*self.blocksize[0],change1*self.blocksize[1])
         self.junc_appe = wx.Bitmap(img2)
-        self.junc_appe
         for i in range(self.m-1):
             self.junction_blocks.append([])
+            self.junction_block_info.append([])
             for j in range(self.n-1):
                 b = junction_btn(self.map, -1, bitmap = self.junc_appe, pos = ((1+change2+j)*self.blocksize[0],(self.m-i-1+change2)*self.blocksize[1]), 
                     size = (change1*self.blocksize[0],change1*self.blocksize[1]), order = [i,j])
                 b.SetUseFocusIndicator(False)
-                b.Setnum1Data(100)
-                b.Setnum2Data(20)
+                b.Setnum1Data(40)
+                b.Setnum2Data(5)
                 self.Bind(wx.EVT_BUTTON, self.watching_junction, b)
                 self.junction_blocks[i].append(b)
+                self.junction_block_info[i].append([(0,40,5)])
         
         # entrance buttons
         self.entrance2block = {}
         self.entr_appe = wx.Bitmap(name="mate\entrance.png", type = wx.BITMAP_TYPE_PNG)
         self.entrance_blocks = []
+        self.entrance_block_info = []
         i = 0
         self.entrance_blocks.append([])
+        self.entrance_block_info.append([])
         for j in range(self.m):
             if np.mod(j,2) == 0:
                 b = entrance_btn(self.map, -1, bitmap = self.entr_appe, pos = (0,(self.m-0.9-j)*self.blocksize[1]), 
@@ -156,8 +229,10 @@ class Simulator_frame(wx.Frame):
             b.Setnum2Data(40)
             self.Bind(wx.EVT_BUTTON, self.watching_entrance, b)
             self.entrance_blocks[i].append(b)
+            self.entrance_block_info[i].append([(0,0,40)])
         i = 1
         self.entrance_blocks.append([])
+        self.entrance_block_info.append([])
         for j in range(self.n):    
             if np.mod(j,2) == 0:
                 b = entrance_btn(self.map, -1, bitmap = self.entr_appe, pos = ((1.1+j)*self.blocksize[0],0), 
@@ -174,6 +249,7 @@ class Simulator_frame(wx.Frame):
             b.Setnum2Data(40)
             self.Bind(wx.EVT_BUTTON, self.watching_entrance, b)
             self.entrance_blocks[i].append(b)
+            self.entrance_block_info[i].append([(0,0,40)])
         
 
         # layout
@@ -182,6 +258,7 @@ class Simulator_frame(wx.Frame):
         time_rate_box.Add(self.rate_sc,1, wx.EXPAND)
 
         toolarea = wx.BoxSizer(wx.VERTICAL)
+        toolarea.Add(self.btn6, 0, wx.EXPAND)
         toolarea.Add(self.btn1, 0, wx.EXPAND)
         toolarea.Add(self.btn2, 0, wx.EXPAND)
         toolarea.Add(self.btn3, 0, wx.EXPAND)
@@ -213,6 +290,7 @@ class Simulator_frame(wx.Frame):
         self.Bind(wx.EVT_BUTTON, self.pausing, self.btn3)
         self.Bind(wx.EVT_BUTTON, self.resuming, self.btn4)
         self.Bind(wx.EVT_BUTTON, self.go_next_rhy, self.btn5)
+        self.Bind(wx.EVT_BUTTON, self.generate, self.btn6)
         self.Bind(wx.EVT_SCROLL_CHANGED, self.Change_rate_slider, self.rate_slider)
         self.Bind(wx.EVT_SPINCTRL, self.Change_rate_sc, self.rate_sc)
 
@@ -282,22 +360,24 @@ class Simulator_frame(wx.Frame):
                 locs.append([(1.5+turn_loc[1]+offset3[order][0])*self.blocksize[0],self.size[1] - (1.5+turn_loc[0]+offset3[order][1])*self.blocksize[1]])
         return locs
 
+    
     # load simulation result
     def loading(self, event):
         print("press btn1")
 
-        self.res=[]
-        with open("./res.json",'r',encoding='utf-8') as json_file: 
-            self.res=json.load(json_file)
-        data={}
-        with open("./data.json",'r',encoding='utf-8') as json_file: 
-            data=json.load(json_file)
-        self.pre_matrix = data['pre']
-        self.dis_matrix = data['dis']
+        wildcard = "Json files(*.json)|*.json"
+        dlg = wx.FileDialog(None,"select a result file",os.getcwd(),"",wildcard=wildcard,style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST) 
+        result = dlg.ShowModal()
+        if result == wx.ID_OK:
+            filepath = dlg.GetPath()
+            with open(filepath,'r',encoding='utf-8') as json_file: 
+                self.res=json.load(json_file)
 
-        self.btn2.Enabled = True
-        wx.MessageBox('Done!')
-        self.statusbar.SetStatusText("Loading success" , 0)
+            self.btn2.Enabled = True
+            wx.MessageBox('Done!')
+            self.statusbar.SetStatusText("Loading success" , 0)
+
+        dlg.Destroy()
         
     # play simulation 
     def playing(self, event):
@@ -309,6 +389,10 @@ class Simulator_frame(wx.Frame):
         self.is_start = True
         self.reload = True
         self.t_start= time.time()
+        self.pretime = self.t_start
+        self.newtime = self.t_start
+
+        self.timelock = True #进程锁
 
         self.btn3.Enabled = True
         self.btn4.Enabled = False
@@ -320,7 +404,6 @@ class Simulator_frame(wx.Frame):
     def pausing(self, event):
         print("press btn3")
 
-        self.pausing_t_start = time.time()
         self.is_start = False
         self.statusbar.SetStatusText("Pausing" , 0)
 
@@ -332,24 +415,34 @@ class Simulator_frame(wx.Frame):
     def resuming(self, event):
         print("press btn4")
 
-        self.pausing_time = self.pausing_time + time.time() - self.pausing_t_start
-        self.pausing_t_start = None
-        self.is_start = True
-        self.statusbar.SetStatusText("Playing" , 0)
+        while True:
+            if self.timelock:
+                self.timelock = False
 
-        self.btn4.Enabled = False
-        self.btn3.Enabled = True
-        self.btn5.Enabled = False
+                self.pretime = time.time()
+                self.is_start = True
+                self.statusbar.SetStatusText("Playing" , 0)
+
+                self.btn3.Enabled = True
+                self.btn4.Enabled = False
+                self.btn5.Enabled = False
+
+                self.timelock = True
+                break
     
     # go to next rhythm, able when paused
     def go_next_rhy(self, event):
         print("press btn5")
 
-        self.pausing_time = self.pausing_time + time.time() - self.pausing_t_start
-        self.pausing_t_start = None
         self.is_start = True
         self.next_flag = True
         self.statusbar.SetStatusText("Next rhythm" , 0)
+
+    def generate(self, event):
+        print("press btn6")
+
+        dlg = generate_Dialog()
+        dlg.Show()
 
     # press at junctions
     def watching_junction(self, event):
@@ -357,6 +450,17 @@ class Simulator_frame(wx.Frame):
         item = self.FindWindowById(theid)
         m,n = item.get_order()
         print("press at junction (%d,%d)" % (m,n))
+        infos = np.array(self.junction_block_info[m][n])
+        infos = infos.transpose()
+        plt.close()
+        fig=plt.figure()
+        ax1=plt.subplot(1,2,1)
+        plt.plot(infos[0],infos[1],'g-')
+        plt.ylabel("goods")
+        ax1=plt.subplot(1,2,2)
+        plt.plot(infos[0],infos[2],'r-')
+        plt.ylabel("AGVs")
+        plt.show()
     
     # press at entrances
     def watching_entrance(self, event):
@@ -364,13 +468,23 @@ class Simulator_frame(wx.Frame):
         item = self.FindWindowById(theid)
         m,n = item.get_order()
         print("press at entrance (%d,%d)" % (m,n))
+        infos = np.array(self.entrance_block_info[m][n])
+        infos = infos.transpose()
+        plt.close()
+        fig=plt.figure()
+        ax1=plt.subplot(1,2,1)
+        plt.plot(infos[0],infos[1],'g-')
+        plt.ylabel("goods")
+        ax1=plt.subplot(1,2,2)
+        plt.plot(infos[0],infos[2],'r-')
+        plt.ylabel("AGVs")
+        plt.show()
 
     # simulation player
     def StopWatchThread(self):
         '''线程函数'''
         global points
         global nums
-        # points = [[28,33,10,self.locations[28],35]]
         
         temp_rate = self.accelarate_r
 
@@ -383,14 +497,31 @@ class Simulator_frame(wx.Frame):
                     points = []
                     nums = []
                     self.reload = False
-                if 'pre_time' not in dir():
-                    pre_time = self.t_start
-                new_time = time.time() 
-                new_period = temp_rate*(new_time - pre_time - self.pausing_time) # scaling simulation time
-                self.current_running_t = self.current_running_t + new_period # scaling simulation time
-                pre_time = new_time
+
+                #if 'pre_time' not in dir():
+                #    pre_time = self.t_start
+
+                if not self.timelock:
+                    continue
+                
+                self.timelock = False
+
+                if not self.next_flag:
+                    self.newtime = time.time() 
+                    new_period = temp_rate*(self.newtime - self.pretime) # scaling simulation time
+                    self.current_running_t = self.current_running_t + new_period # scaling simulation time
+                    self.pretime = self.newtime
+                else:
+                    self.pretime = time.time()
+                    self.current_running_t = self.current_running_t + self.rythmn
+                    self.is_start = False
+                    self.next_flag = False
+                
+                self.timelock = True
+
                 current_running_t = self.current_running_t
                 temp_rate = self.accelarate_r
+
 
                 self.statusbar.SetStatusText("Operating time: %d sec %d min %d hour" %(np.mod(current_running_t,60),np.floor(np.mod(current_running_t,3600)/60),
                     np.floor(current_running_t/3600)) , 1)
@@ -401,12 +532,6 @@ class Simulator_frame(wx.Frame):
 
                 self.set_gauge(wave/len(self.res)*100)
                 
-                if self.next_flag: # Next function
-                    if wave != pre_wave:
-                        self.pausing_t_start = time.time()
-                        self.is_start = False
-                        self.next_flag = False
-                
                 new_points = []
                 for item in points:  
                 # [starting_node, ending_node, starting_time, point_location, lifetime, point_flags]
@@ -415,15 +540,15 @@ class Simulator_frame(wx.Frame):
                     moving_time = self.counting - item[2]
 
                     # unit arrives, removed
-                    if item[4] <= (self.counting - item[2]):
+                    if item[4] <= moving_time:
                         if item[1] >= 2*(self.m+self.n):
                             block_loc = self.junc2block[item[1] - 2*self.m - 2*self.n]
-                            wx.CallAfter(self.updating_infos_in_juncbtn,0, 1, block_loc)
+                            wx.CallAfter(self.updating_infos_in_juncbtn,0, 1, block_loc,self.counting)
                             self.completemission = self.completemission + 1
                             self.statusbar.SetStatusText("Complete mission: %d" % self.completemission, 2)
                         elif item[1] >= (self.m+self.n):
                             block_loc = self.entrance2block[item[1]]
-                            wx.CallAfter(self.updating_infos_in_entrbtn,1, 1, block_loc)
+                            wx.CallAfter(self.updating_infos_in_entrbtn,1, 1, block_loc,self.counting)
                             self.completemission = self.completemission + 1
                             self.statusbar.SetStatusText("Complete mission: %d" % self.completemission, 2)
                         continue
@@ -494,7 +619,7 @@ class Simulator_frame(wx.Frame):
                         
                         new_flags = copy.copy(item[5])
                         if moving_time == 0 and not new_flags[1]:
-                            wx.CallAfter(self.updating_infos_in_juncbtn,-1,-1, block_loc)
+                            wx.CallAfter(self.updating_infos_in_juncbtn,-1,-1, block_loc,self.counting)
                             new_flags[1] = True
 
                         new_points.append([item[0],item[1],item[2],new_location,item[4], new_flags]) 
@@ -506,7 +631,7 @@ class Simulator_frame(wx.Frame):
 
                         new_flags = copy.copy(item[5])
                         if moving_time == 0 and not new_flags[1]:
-                            wx.CallAfter(self.updating_infos_in_entrbtn,0,-1, block_loc)
+                            wx.CallAfter(self.updating_infos_in_entrbtn,0,-1, block_loc,self.counting)
                             new_flags[1] = True
 
                         new_points.append([item[0],item[1],item[2],new_location,item[4], new_flags])
@@ -539,16 +664,21 @@ class Simulator_frame(wx.Frame):
         self.map.SetpointsData(points)
         self.map.SetnumsData(nums)
 
-    def updating_infos_in_juncbtn(self,num1,num2,order):
+    def updating_infos_in_juncbtn(self,num1,num2,order,time):
         self.junction_blocks[order[0]][order[1]].Changenum1Data(num1)
         self.junction_blocks[order[0]][order[1]].Changenum2Data(num2)
+        temp = self.junction_block_info[order[0]][order[1]][-1]
+        self.junction_block_info[order[0]][order[1]].append((time,temp[1]+num1,temp[2]+num2))
     
-    def updating_infos_in_entrbtn(self,num1,num2,order):
+    def updating_infos_in_entrbtn(self,num1,num2,order,time):
         self.entrance_blocks[order[0]][order[1]].Changenum1Data(num1)
         self.entrance_blocks[order[0]][order[1]].Changenum2Data(num2)
-    
-    def set_gauge(self, r):
-        self.gauge.SetValue(r)
+        temp = self.entrance_block_info[order[0]][order[1]][-1] 
+        self.entrance_block_info[order[0]][order[1]].append((time,temp[1]+num1,temp[2]+num2))
+
+
+    def set_gauge(self, v):
+        self.gauge.SetValue(v)
 
 '''if __name__ == "__main__":
     m = 6
@@ -561,12 +691,15 @@ class Simulator_frame(wx.Frame):
     frame.Show()
     app.MainLoop()'''
 
-m = 6
-n = 6
-points = []
-nums = []
 
+'''
 app = wx.App(False)
 frame = Simulator_frame(None,size=(960,880),m=m,n=n, title='simulator')
+frame.Show()
+app.MainLoop()
+'''
+
+app = wx.App()
+frame = MDIFrame()
 frame.Show()
 app.MainLoop()

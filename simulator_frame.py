@@ -383,6 +383,20 @@ class Simulator_frame(wx.MDIChildFrame):
     def playing(self, event):
         print("press btn2")
 
+        for i in range(len(self.junction_blocks)):
+            for j in range(len(self.junction_blocks[i])):
+                self.junction_blocks[i][j].Setnum1Data(40)
+                self.junction_blocks[i][j].Setnum2Data(5)
+                self.junction_block_info[i][j] = [(0,40,5)]
+                
+        
+        for i in range(len(self.entrance_blocks)):
+            for j in range(len(self.entrance_blocks[i])):
+                self.entrance_blocks[i][j].Setnum1Data(0)
+                self.entrance_blocks[i][j].Setnum2Data(40)
+                self.entrance_block_info[i][j] = [(0,0,40)]
+
+
         self.completemission = 0
         self.pausing_time = 0
         self.current_running_t = 0
@@ -453,7 +467,7 @@ class Simulator_frame(wx.MDIChildFrame):
         infos = np.array(self.junction_block_info[m][n])
         infos = infos.transpose()
         plt.close()
-        fig=plt.figure("Junction (%d,%d)" % (m,n),(10,5))
+        fig=plt.figure("Junction (%d,%d)" % (m,n),(10,5),frameon=False)
         ax1=plt.subplot(1,2,1)
         plt.plot(infos[0],infos[1],'g-')
         plt.ylabel("Goods")
@@ -471,7 +485,7 @@ class Simulator_frame(wx.MDIChildFrame):
         infos = np.array(self.entrance_block_info[m][n])
         infos = infos.transpose()
         plt.close()
-        fig=plt.figure("Entrance (%d,%d)" % (m,n),(10,5))
+        fig=plt.figure("Entrance (%d,%d)" % (m,n),(10,5),frameon=False)
         ax1=plt.subplot(1,2,1)
         plt.plot(infos[0],infos[1],'g-')
         plt.ylabel("Goods")
@@ -525,7 +539,7 @@ class Simulator_frame(wx.MDIChildFrame):
 
                 self.statusbar.SetStatusText("Operating time: %d sec %d min %d hour" %(np.mod(current_running_t,60),np.floor(np.mod(current_running_t,3600)/60),
                     np.floor(current_running_t/3600)) , 1)
-                self.counting = int(current_running_t) 
+                self.counting = np.floor(current_running_t) 
                 pre_wave = wave
                 wave = int(np.floor(self.counting/self.rythmn))
                 timer1 = np.mod(self.counting,self.rythmn)
@@ -537,7 +551,7 @@ class Simulator_frame(wx.MDIChildFrame):
                 # [starting_node, ending_node, starting_time, point_location, lifetime, point_flags]
                 # [0            , 1          , 2            , 3,            , 4       , 5     ]
 
-                    moving_time = self.counting - item[2]
+                    moving_time = current_running_t - item[2]
 
                     # unit arrives, removed
                     if item[4] <= moving_time:
@@ -554,9 +568,18 @@ class Simulator_frame(wx.MDIChildFrame):
                         continue
                     
                     # unit is on its way
-                    if moving_time > 0:
+                    if moving_time >= 0:
+
+                        new_flags = copy.copy(item[5])
+
+                        # run out of entrance block
+                        if item[0] < self.m+self.n:
+                            temp_block_loc = self.entrance2block[item[0]]
+                            if np.floor(moving_time) == 0 and not new_flags[1]:
+                                wx.CallAfter(self.updating_infos_in_entrbtn,0,-1, temp_block_loc,self.counting)
+                                new_flags[1] = True
+
                         if item[1] < 2*self.m + 2*self.n or (item[2] + item[4] - self.counting) > 5:
-                            new_flags = copy.copy(item[5])
                             loc0 = []
                             loc1 = []
                             pre_point = item[1]
@@ -598,8 +621,7 @@ class Simulator_frame(wx.MDIChildFrame):
                         
                         # get into junction        
                         elif (item[2] + item[4] - self.counting) <= 5:
-                            new_flags = copy.copy(item[5])
-                            surplus = (item[2] + item[4] - self.counting)
+                            surplus = (item[2] + item[4] - current_running_t)
                             block_loc = self.junc2block[item[1] - 2*self.m - 2*self.n]
                             exitan = [(2+block_loc[1])*self.blocksize[0],(self.m-block_loc[0])*self.blocksize[1]]
                             junc_loc = self.locations[item[1]]
@@ -611,14 +633,21 @@ class Simulator_frame(wx.MDIChildFrame):
 
                     # get out of junction , waiting to move
                     elif item[0] >= 2*self.m+2*self.n:
+
+                        ##### NEED MORE WORK! #####
                         block_loc = self.junc2block[item[0] - 2*self.m - 2*self.n]
                         exitan = [(2+block_loc[1])*self.blocksize[0],(self.m-block_loc[0])*self.blocksize[1]]
                         junc_loc = self.locations[item[0]]
+                        '''
                         new_location = [exitan[0]*(-moving_time)/self.rythmn + junc_loc[0]*(1+moving_time/self.rythmn),
                             exitan[1]*(-moving_time)/self.rythmn + junc_loc[1]*(1+moving_time/self.rythmn)]
-                        
+                        '''
+
+                        new_location = junc_loc
+                        ###########################
+
                         new_flags = copy.copy(item[5])
-                        if moving_time == 0 and not new_flags[1]:
+                        if not new_flags[1]:
                             wx.CallAfter(self.updating_infos_in_juncbtn,-1,-1, block_loc,self.counting)
                             new_flags[1] = True
 
@@ -626,15 +655,7 @@ class Simulator_frame(wx.MDIChildFrame):
                     
                     # get out of entrance , waiting to move
                     else:
-                        block_loc = self.entrance2block[item[0]]
-                        new_location = copy.copy(item[3])
-
-                        new_flags = copy.copy(item[5])
-                        if moving_time == 0 and not new_flags[1]:
-                            wx.CallAfter(self.updating_infos_in_entrbtn,0,-1, block_loc,self.counting)
-                            new_flags[1] = True
-
-                        new_points.append([item[0],item[1],item[2],new_location,item[4], new_flags])
+                        new_points.append(copy.copy(item))
                         
                 points = copy.copy(new_points)
 
@@ -667,14 +688,18 @@ class Simulator_frame(wx.MDIChildFrame):
     def updating_infos_in_juncbtn(self,num1,num2,order,time):
         self.junction_blocks[order[0]][order[1]].Changenum1Data(num1)
         self.junction_blocks[order[0]][order[1]].Changenum2Data(num2)
+        self.junction_blocks[order[0]][order[1]].Refresh()
         temp = self.junction_block_info[order[0]][order[1]][-1]
         self.junction_block_info[order[0]][order[1]].append((time,temp[1]+num1,temp[2]+num2))
+        self.Update()
     
     def updating_infos_in_entrbtn(self,num1,num2,order,time):
         self.entrance_blocks[order[0]][order[1]].Changenum1Data(num1)
         self.entrance_blocks[order[0]][order[1]].Changenum2Data(num2)
+        self.entrance_blocks[order[0]][order[1]].Refresh()
         temp = self.entrance_block_info[order[0]][order[1]][-1] 
         self.entrance_block_info[order[0]][order[1]].append((time,temp[1]+num1,temp[2]+num2))
+        self.Update()
 
 
     def set_gauge(self, v):

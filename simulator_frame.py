@@ -161,6 +161,7 @@ class Simulator_frame(wx.MDIChildFrame):
 
         self.panel = wx.Panel(self)
 
+
         self.btn1 = wx.Button(self.panel, -1, label = 'load')
         self.btn2 = wx.Button(self.panel, -1, label = 'play')
         self.btn2.Enabled = False
@@ -183,6 +184,8 @@ class Simulator_frame(wx.MDIChildFrame):
         self.gauge = wx.Gauge(self, -1, 100)
         self.gauge.SetBezelFace(3)
         self.gauge.SetShadowWidth(3)
+
+        self.fps_label = wx.StaticText(self.map, -1, "", pos = [20,20])
 
         # junction buttons
         img1 = wx.Image(name="mate\junc.png", type = wx.BITMAP_TYPE_PNG)
@@ -525,6 +528,7 @@ class Simulator_frame(wx.MDIChildFrame):
                     new_period = temp_rate*(self.newtime - self.pretime) # scaling simulation time
                     self.current_running_t = self.current_running_t + new_period # scaling simulation time
                     self.pretime = self.newtime
+                    self.fps_label.SetLabel("fps %.1f" % (1/new_period))
                 else:
                     self.pretime = time.time()
                     self.current_running_t = self.current_running_t + self.rythmn
@@ -705,7 +709,8 @@ class Simulator_frame(wx.MDIChildFrame):
     def set_gauge(self, v):
         self.gauge.SetValue(v)
 
-'''if __name__ == "__main__":
+'''
+if __name__ == "__main__":
     m = 6
     n = 6
     points = []
@@ -714,7 +719,8 @@ class Simulator_frame(wx.MDIChildFrame):
     app = wx.App(False)
     frame = Simulator_frame(None,size=(960,880),m=m,n=n, title='simulator')
     frame.Show()
-    app.MainLoop()'''
+    app.MainLoop()
+'''
 
 
 '''
